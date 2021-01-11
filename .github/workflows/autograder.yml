@@ -1,0 +1,134 @@
+
+name: autograder
+
+on: [push]
+
+jobs:
+  autograder_test:
+    runs-on: ubuntu-20.04
+    env:
+      SUBMISSION_DOWNLOAD_LINK: "https://drive.google.com/file/d/ZIP_FILE_ID"
+    
+    steps:
+    - name: Set up Python 3.6
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.6
+
+    - name: Add conda to system path
+      run: echo $CONDA/bin >> $GITHUB_PATH
+      
+    - name : Checkout Autograder
+      uses: actions/checkout@v2
+      with:
+        repository: YoussefSGhatas/ip-project-grader
+        
+    - name : Remove sample submission
+      run : rm -r ./students-work/*
+      
+    - name : Checkout Project
+      run : |
+        echo "DOWNLOADING SUBMISSION AT GOOGLE DRIVE URL $SUBMISSION_DOWNLOAD_LINK"
+
+        wget -q 'https://raw.githubusercontent.com/matthuisman/gdrivedl/master/gdrivedl.py'
+        python gdrivedl.py -q -O sem.zip -P ./students-work/9999/ "$SUBMISSION_DOWNLOAD_LINK"
+        cd ./students-work/9999/
+        unzip sem.zip
+        rm sem.zip
+        cd ../..
+
+
+    - name : Copy test set into input folder
+      run : |
+        python gdrivedl.py -O cases.zip 'https://drive.google.com/file/d/19Q0H_ptIdAvEbFzgfRRJV312lVoBjfRL'
+        unzip cases.zip
+        rm cases.zip
+        
+        mkdir input
+        image_files=(`find ./PublicTestCases-version1.1 -type f -iname "*.png" -or -iname "*.jpg" -or -iname "*.jpeg" 2> /dev/null`) 
+        cp "${image_files[@]}" ./input/
+        
+    - name: Run autograder
+      run: |
+        python ./run-students-docker-STD.py "$PWD/students-work/" "$PWD/input" "$PWD/output" -v 1
+        
+    - name : Create Test Grader
+      run : |
+        cat << EOF > TestGrader.py
+        from difflib import SequenceMatcher
+        import argparse
+        import os
+
+        args_parser = argparse.ArgumentParser()
+        args_parser.add_argument('accurate_path', help="Accurate test file")
+        args_parser.add_argument('to_check_path', help="To be checked file")
+        args = args_parser.parse_args()
+
+        accurate = open(args.accurate_path, 'r').read()
+        to_check = open(args.to_check_path, 'r').read()
+
+        seq = SequenceMatcher(a=accurate, b=to_check)
+        print(f"Accuracy {seq.ratio() * 100}%")
+        EOF
+        
+        
+    - name : Test Public Test Cases v1.1 against your current run results
+      run : |
+        mkdir output-correct
+        tests=(`find ./PublicTestCases-version1.1 -type f -iname "*.txt" 2> /dev/null`) 
+        cp "${tests[@]}" ./output-correct/
+        
+        base_dir=`pwd`
+        output_folder=`echo $base_dir/output/SEM??`
+        cd ./output-correct/
+        files=(*.txt)
+        cd ..
+        
+        echo "_____________________________________________________________________"
+        for filename in "${files[@]}"; do
+            if [ ! -f "$output_folder/$filename" ] ; then
+                echo "$filename NOT FOUND IN OUR OUTPUT"
+                sudo touch "$output_folder/$filename"
+            fi
+            
+            sudo python TestGrader.py "$base_dir/output-correct/$filename" "$output_folder/$filename"
+            echo "_____________________________________________________________________"
+        done
+        
+        
+    - name : Test Public Test Cases v1.1 against SEM-xx/output-results/SEM-xx
+      run : |
+        tests=(`find ./PublicTestCases-version1.1 -type f -iname "*.txt" 2> /dev/null`) 
+        cp "${tests[@]}" ./output-correct/
+        
+        test_cases_output=`echo ./students-work/9999/SEM-??/output-results/SEM-??/`
+        
+        # Check if test_cases_output still contains ??, therefore directory does not exist
+        if [[ "$test_cases_output" = *\?\?* ]] ; then
+            echo "ERROR IN PUBLIC TEST CASES OUTPUT FOLDER STRUCTURE"
+            echo 'Should be SEM-xx/output-results/SEM-xx/'
+            exit 1
+        fi
+        
+        base_dir=`pwd`
+        cd ./output-correct/
+        files=(*.txt)
+        cd ..
+        
+        echo "_____________________________________________________________________"
+        for filename in "${files[@]}"; do
+            if [ ! -f "$test_cases_output/$filename" ] ; then
+                echo "$filename NOT FOUND IN OUR OUTPUT"
+                sudo touch "$test_cases_output/$filename"
+            fi
+            
+            sudo python TestGrader.py "$base_dir/output-correct/$filename" "$test_cases_output/$filename"
+            echo "_____________________________________________________________________"
+        done
+
+    - name: Upload current run output
+      uses: actions/upload-artifact@v2
+      if: always()
+      with:
+        name: test_cases_output
+        path: ./output/*
