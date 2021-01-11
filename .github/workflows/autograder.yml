@@ -68,6 +68,7 @@ jobs:
         to_check = open(args.to_check_path, 'r').read()
 
         seq = SequenceMatcher(a=accurate, b=to_check)
+        print("Testing:", os.path.basename(args.accurate_path))
         print(f"Accuracy {seq.ratio() * 100}%")
         EOF
         
