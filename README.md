@@ -7,6 +7,7 @@ Test submission for Image Processing Auto Grader Semester
 # How to use:
 - Fork this repo
 - Change SUBMISSION_DOWNLOAD_LINK environment variable with yours
+- Do not forget to make the link public and any one can view
 - Commit and Push
 - It will download your submission and test it with auto grader against [public test](https://drive.google.com/file/d/19Q0H_ptIdAvEbFzgfRRJV312lVoBjfRL)
 - If all is good you will get green success mark
